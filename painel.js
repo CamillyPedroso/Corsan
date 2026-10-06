@@ -166,6 +166,9 @@ function applyDatabasePayload(payload) {
   const latest = (payload && payload.latest) || (remote.length ? remote[remote.length - 1] : null) || null;
   const currentBase = (payload && payload.currentBase) || (remote.length ? remote[remote.length - 1] : null) || null;
   if (remote.length) state.history = remote;
+  const stamps = [latest, currentBase].filter(Boolean).map((snap) => ({ at: snap.uploadedAt || "", file: snap.fileName || "" }))
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  if (stamps.length && stamps[0].at) state.lastUpdate = stamps[0];
   if (currentBase && currentBase.records && currentBase.records.length) {
     state.baseline = currentBase.records;
     state.baselineFileName = currentBase.fileName || `Sheets - ${currentBase.dateKey}`;
@@ -208,14 +211,33 @@ function syncSnapshotToSheets(snapshot) {
   sheetsQueue = sheetsQueue.then(async () => {
     const result = await callSheets({ action: "save", snapshot });
     if (result.skipped) return;
-    if (!result.ok) setNotice("Não salvou no banco Google: " + (result.error || "erro desconhecido"), "error");
+    if (!result.ok) {
+      setNotice("Não salvou no banco Google: " + (result.error || "erro desconhecido") + ". Os outros NÃO vão ver esta base.", "error");
+      return;
+    }
+    setNotice(`${snapshot.type === "base_inicial" ? "Base inicial" : "Atualização"} salva no banco Google ✓ Quem abrir o link já vê estes mesmos números.`, "ok");
   });
   return sheetsQueue;
 }
 
+async function getSheetsHistory() {
+  const config = sheetsConfig();
+  try {
+    const sep = config.url.includes("?") ? "&" : "?";
+    const response = await fetch(`${config.url}${sep}action=history`, { credentials: "omit" });
+    return JSON.parse(await response.text());
+  } catch {
+    return { ok: false, error: "Não consegui ler o banco Google. Confira se a implantação está com acesso para \"Qualquer pessoa\"." };
+  }
+}
+
 async function loadSheetsHistory() {
-  const result = await callSheets({ action: "history" });
+  let result = await callSheets({ action: "history" });
   if (result.skipped) return false;
+  if (!result.ok || !Array.isArray(result.history)) {
+    const viaGet = await getSheetsHistory();
+    if (viaGet && Array.isArray(viaGet.history)) result = Object.assign({ ok: true }, viaGet);
+  }
   if (!result.ok) {
     setNotice("Banco Google: " + (result.error || "erro desconhecido"), "error");
     return false;
@@ -389,7 +411,6 @@ function serviceCode(value) {
   return normKey(value).replace(/\.0+$/, "");
 }
 
-// Regras do tratamento EXOC:
 // Fica so "encerrado com ocorrencia / nao executado". Sai tudo que foi executado (ex.: "0-Executado").
 function encerradaComOcorrencia(record) {
   const campos = [record.situacao, record.tipoEncerramento, record.descricaoEncerramento].map(normKey);
@@ -398,6 +419,8 @@ function encerradaComOcorrencia(record) {
   const executado = campos.some((c) => /EXECUTAD/.test(c.replace(/NAO EXECUTAD/g, "")));
   return naoExecutado && !executado;
 }
+
+// Regras do tratamento EXOC:
 // 1) responsabilidade COI pela tabela auxiliar (código do serviço)
 // 2) somente encerradas com ocorrência (coluna Situação)
 // 3) fora tudo que foi visitado no dia atual da base (eles nunca tratam as do dia)
@@ -661,9 +684,22 @@ async function loadSavedState() {
   } catch {
     state.latestFileName = "";
   }
+  const hasSheets = !!sheetsConfig().url;
+  if (hasSheets) {
+    // Banco Google é a única fonte: todo mundo vê o mesmo número
+    state.baseline = [];
+    state.manualStatus = {};
+    state.history = [];
+    state.latestKeys = null;
+    state.latestFileName = "";
+    state.baselineFileName = "";
+    setNotice("Buscando os dados no banco Google...");
+    const ok = await loadSheetsHistory();
+    if (ok && !state.baseline.length) setNotice("Banco Google conectado. Ainda não há base inicial enviada.", "");
+    return;
+  }
   state.baseline = await dbGet("baseline", []);
   state.manualStatus = await dbGet("manualStatus", {});
-  const hasSheets = !!sheetsConfig().url;
   state.history = hasSheets ? [] : fixedDailyHistory(await dbGet("history", []));
   const latestKeys = hasSheets ? null : await dbGet("latestKeys", null);
   state.latestKeys = latestKeys ? new Set(latestKeys) : null;
@@ -714,7 +750,7 @@ function fixedDailyHistory(history) {
 }
 async function applyPreloadedTrackingState() {
   if (!PRELOADED_TRACKING_STATE || !PRELOADED_TRACKING_STATE.id) return;
-  if (sheetsConfig().url && state.history.length) return;
+  if (sheetsConfig().url) return;
   if (localStorage.getItem(PRELOADED_TRACKING_KEY) === "applied") return;
   state.baseline = PRELOADED_TRACKING_STATE.baseline || [];
   state.history = fixedDailyHistory(PRELOADED_TRACKING_STATE.history || []);
@@ -983,6 +1019,7 @@ function snapshotDateFromRecords(records) {
 
 function addSnapshot(fileName, records, type = "atualizacao") {
   const dateKey = todayKey();
+  state.lastUpdate = { at: new Date().toISOString(), file: fileName };
   const snapshot = {
     id: `${dateKey}-${type}`,
     fileName,
@@ -1021,10 +1058,10 @@ function addSnapshot(fileName, records, type = "atualizacao") {
   state.history = fixedDailyHistory(state.history);
   const existingSameDay = state.history.find((item) => item.dateKey === dateKey);
   if (existingSameDay) {
-    if (type === "atualizacao") {
-      syncSnapshotToSheets(snapshot);
-    }
+    // reenviar a base inicial no mesmo dia substitui a anterior (para todos)
+    if (type === "base_inicial") state.history = state.history.map((item) => (item.dateKey === dateKey ? snapshot : item));
     state.history.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+    syncSnapshotToSheets(snapshot);
     return;
   }
   if (type === "base_inicial") {
@@ -1238,6 +1275,7 @@ function renderSla(records) {
 }
 
 function render() {
+  renderLastUpdate();
   decorateRecords();
   updateFilterOptions();
   const records = filteredRecords();
@@ -1386,6 +1424,46 @@ async function exportMonthlyXlsx() {
     { name: "Base mensal", rows: [data.detailHeaders].concat(data.detailRows) },
   ]);
 }
+
+function renderLastUpdate() {
+  let badge = document.getElementById("lastUpdateBadge");
+  if (!badge) {
+    const bar = document.querySelector(".top-actions");
+    if (!bar) return;
+    badge = document.createElement("div");
+    badge.id = "lastUpdateBadge";
+    badge.style.cssText = "margin-right:auto;align-self:center;padding:8px 12px;border-radius:8px;background:#eaf2ff;border:1px solid #c7dce8;color:#0027bd;font-size:13px;line-height:1.3";
+    bar.insertBefore(badge, bar.firstChild);
+  }
+  const info = state.lastUpdate;
+  if (!info || !info.at) {
+    badge.innerHTML = "<strong>Última atualização:</strong> aguardando base";
+    return;
+  }
+  const when = new Date(info.at);
+  const text = Number.isNaN(when.getTime()) ? esc(info.at) : when.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  badge.innerHTML = `<strong>Última atualização:</strong> ${text}${info.file ? `<br><small style="color:#4b5d63">${esc(info.file)}</small>` : ""}`;
+}
+
+let refreshing = false;
+async function refreshFromSheets() {
+  if (refreshing || document.visibilityState !== "visible" || !sheetsConfig().url) return;
+  refreshing = true;
+  try {
+    const before = state.lastUpdate && state.lastUpdate.at;
+    if (await loadSheetsHistory()) {
+      if (state.lastUpdate && state.lastUpdate.at !== before) {
+        state.baseline = applyBusinessRules(state.baseline);
+        render();
+        setNotice("Painel atualizado com a última base enviada.", "ok");
+      }
+    }
+  } finally {
+    refreshing = false;
+  }
+}
+setInterval(refreshFromSheets, 5 * 60 * 1000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshFromSheets(); });
 
 async function loadBaseline() {
   await loadSavedState();
