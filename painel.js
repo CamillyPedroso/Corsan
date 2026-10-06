@@ -390,6 +390,14 @@ function serviceCode(value) {
 }
 
 // Regras do tratamento EXOC:
+// Fica so "encerrado com ocorrencia / nao executado". Sai tudo que foi executado (ex.: "0-Executado").
+function encerradaComOcorrencia(record) {
+  const campos = [record.situacao, record.tipoEncerramento, record.descricaoEncerramento].map(normKey);
+  const texto = campos.join(" | ");
+  const naoExecutado = texto.includes("NAO EXECUTAD") || texto.includes("OCORRENCIA");
+  const executado = campos.some((c) => /EXECUTAD/.test(c.replace(/NAO EXECUTAD/g, "")));
+  return naoExecutado && !executado;
+}
 // 1) responsabilidade COI pela tabela auxiliar (código do serviço)
 // 2) somente encerradas com ocorrência (coluna Situação)
 // 3) fora tudo que foi visitado no dia atual da base (eles nunca tratam as do dia)
@@ -415,7 +423,7 @@ function applyBusinessRules(rows, referenceDay) {
     });
   const f = { semData: 0, outroAno: 0, hoje: 0, semCoi: 0, semTabela: 0, naoEncerrada: 0, semSituacao: !hasSituacao, diaBase: currentDay };
   const out = enrichedRows.filter((record) => {
-    if (hasSituacao && !normKey(record.situacao).includes("OCORRENCIA")) { f.naoEncerrada += 1; return false; }
+    if (!encerradaComOcorrencia(record)) { f.naoEncerrada += 1; return false; }
     const date = record.visitadoEmMs ? new Date(record.visitadoEmMs) : null;
     if (!date) { f.semData += 1; return false; }
     if (date.getFullYear() <= 2025) { f.outroAno += 1; return false; }
