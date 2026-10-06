@@ -418,7 +418,7 @@ function applyBusinessRules(rows, referenceDay) {
     if (hasSituacao && !normKey(record.situacao).includes("OCORRENCIA")) { f.naoEncerrada += 1; return false; }
     const date = record.visitadoEmMs ? new Date(record.visitadoEmMs) : null;
     if (!date) { f.semData += 1; return false; }
-    if (date.getFullYear() !== 2026) { f.outroAno += 1; return false; }
+    if (date.getFullYear() <= 2025) { f.outroAno += 1; return false; }
     if (dateKeyFromMs(record.visitadoEmMs) >= currentDay) { f.hoje += 1; return false; }
     if (record._semTabela) { f.semTabela += 1; return false; }
     if (normKey(record.procxCoi) !== "COI") { f.semCoi += 1; return false; }
@@ -893,7 +893,7 @@ function renderSummary(records) {
         + ` − ${number(f.duplicadas)} duplicadas (mesma solicitação + ligação + código do serviço)`
         + ` − ${number(f.naoEncerrada || 0)} não encerradas com ocorrência`
         + ` − ${number(f.semData)} sem data válida em "Visitado em"`
-        + ` − ${number(f.outroAno)} visitadas fora de 2026`
+        + ` − ${number(f.outroAno)} visitadas até 2025`
         + ` − ${number(f.hoje)} visitadas no dia da base${f.diaBase ? ` (${f.diaBase.slice(8)}/${f.diaBase.slice(5, 7)})` : ""}`
         + ` − ${number(f.semTabela || 0)} com código fora da tabela auxiliar`
         + ` − ${number(f.semCoi)} de outra responsabilidade (não COI)`
