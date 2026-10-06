@@ -527,7 +527,7 @@ th {
 /* Ajuste visual para aproximar o painel da referência Corsan/Aegea */
 body {
   background:
-    url("../img/fundo-lateral.png") right 330px / 330px 560px no-repeat,
+    url("fundo-lateral.png") right 330px / 330px 560px no-repeat,
     radial-gradient(circle at 12% 8%, rgba(255,255,255,.98), rgba(255,255,255,.26) 26%, transparent 42%),
     linear-gradient(125deg, #dff5ff 0%, #aee9ff 36%, #2a94e8 72%, #0073d7 100%);
 }
@@ -571,7 +571,7 @@ body::after {
   border-radius: 0 0 34px 34px;
   background:
     linear-gradient(90deg, rgba(238,249,255,.98) 0%, rgba(238,249,255,.74) 28%, rgba(11,71,168,.1) 43%, rgba(0,57,171,.78) 100%),
-    url("../img/banner-topo.png") center center / cover no-repeat;
+    url("banner-topo.png") center center / cover no-repeat;
   box-shadow: inset 0 -80px 120px rgba(255,255,255,.22), 0 24px 55px rgba(0,50,150,.18);
 }
 
@@ -792,7 +792,7 @@ tr:nth-child(even) td {
 /* Versão com fundo institucional pronto */
 body {
   min-height: 100vh;
-  background: url("../img/fundo-institucional.png") center top / cover fixed no-repeat #dff4ff;
+  background: url("fundo-institucional.png") center top / cover fixed no-repeat #dff4ff;
 }
 
 body::before,
@@ -1389,7 +1389,7 @@ body {
 }
 
 body {
-  background-image: url("../img/fundo-institucional.png") !important;
+  background-image: url("fundo-institucional.png") !important;
   background-color: #dff4ff !important;
   background-repeat: no-repeat !important;
   background-position: center top !important;

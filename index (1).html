@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Painel EXOC Corsan</title>
+    <meta name="description" content="Painel para acompanhar EXOCs a partir de uma base inicial fixa e novas bases enviadas durante o dia." />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f172a'/%3E%3Cpath d='M16 18h32v6H16zM16 29h23v6H16zM16 40h32v6H16z' fill='%23e2e8f0'/%3E%3Ccircle cx='48' cy='32' r='8' fill='%2322c55e'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="painel.css" />
+    <script>
+      window.addEventListener("error", function (event) {
+        var box = document.querySelector("#loadNotice");
+        if (box) {
+          box.textContent = "Erro no painel: " + (event.message || "erro desconhecido");
+          box.className = "notice error";
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand-hero">
+          <div class="brand-line">
+            <img class="brand-logo" src="logo-corsan-aegea.png" alt="Corsan Aegea" />
+          </div>
+          <p class="eyebrow">Programação de serviços</p>
+          <h1>Painel EXOC</h1>
+        </div>
+        <div class="hero-copy">Saneamento<br />que transforma<br />vidas</div>
+      </header>
+
+      <section class="dashboard-frame">
+        <div class="top-actions">
+          <label class="button primary">
+            <input id="baselineFile" type="file" accept=".xlsx,.xls,.xlsb,.csv" />
+            Carregar base inicial
+          </label>
+          <label class="button primary">
+            <input id="latestFile" type="file" accept=".xlsx,.xls,.xlsb,.csv" />
+            Subir nova base
+          </label>
+          <label class="button">
+            <input id="stateFile" type="file" accept=".json" />
+            Importar acompanhamento
+          </label>
+          <button id="exportState" class="button" type="button">Exportar acompanhamento</button>
+          <button id="exportCsv" class="button" type="button">Gerar base tratada</button>
+          <button id="sheetsConfig" class="button" type="button">Banco Google</button>
+          <button id="clearData" class="button danger-button" type="button">Limpar dados</button>
+        </div>
+
+      <section class="notice" id="loadNotice">
+        Carregue a base extraída do sistema. O painel mostra somente responsabilidade COI, Visitado em 2026 e remove EXOCs do dia atual.
+      </section>
+      <section class="notice" id="funnelBox" hidden></section>
+
+      <section class="summary-grid" aria-label="Resumo das EXOCs">
+        <article>
+          <span>Volumetria diária</span>
+          <strong id="totalCount">0</strong>
+        </article>
+        <article>
+          <span>Tratadas</span>
+          <strong id="treatedCount">0</strong>
+        </article>
+        <article>
+          <span>Não tratadas</span>
+          <strong id="openCount">0</strong>
+        </article>
+        <article>
+          <span>Progresso</span>
+          <strong id="progressCount">0%</strong>
+        </article>
+        <article>
+          <span>Vencidas 24h</span>
+          <strong id="overdueCount">0</strong>
+        </article>
+        <article>
+          <span>Vencem em até 4h</span>
+          <strong id="dueSoonCount">0</strong>
+        </article>
+        <article>
+          <span>Tratadas 24h no mês</span>
+          <strong id="monthRateCount">0%</strong>
+        </article>
+      </section>
+
+      <section class="workbench">
+        <aside class="filters" aria-label="Filtros">
+          <div class="field">
+            <label for="searchBox">Buscar</label>
+            <input id="searchBox" type="search" placeholder="Ligação, solicitação, localidade..." />
+          </div>
+          <div class="field">
+            <label for="statusFilter">Status</label>
+            <select id="statusFilter" multiple>
+              <option value="todos">Todos</option>
+              <option value="nao-tratado">Não tratado</option>
+              <option value="tratado">Tratado</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="diretoriaFilter">Diretoria</label>
+            <select id="diretoriaFilter" multiple>
+              <option value="todos">Todas</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="microFilter">Micro</label>
+            <select id="microFilter" multiple>
+              <option value="todos">Todas</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ocorrenciaFilter">Ocorrência</label>
+            <select id="ocorrenciaFilter" multiple>
+              <option value="todos">Todas</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="grupoServicoFilter">Grupo de servico</label>
+            <select id="grupoServicoFilter" multiple>
+              <option value="todos">Todos</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="servicoFilter">Serviço</label>
+            <select id="servicoFilter" multiple>
+              <option value="todos">Todos</option>
+            </select>
+          </div>
+          <div class="meta">
+            <span>Base inicial: <strong id="baselineDate">fixa</strong></span>
+            <span>Última base: <strong id="latestDate">não enviada</strong></span>
+            <span>Duplicidade: <strong id="duplicateText">sem duplicidade</strong></span>
+            <span>Tratamento: <strong id="auxText">auxiliares internos</strong></span>
+          </div>
+        </aside>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2 id="viewTitle">Acompanhamento diário das EXOCs</h2>
+              <p id="resultText">Aguardando carregamento da base inicial.</p>
+            </div>
+            <div class="segmented" role="group" aria-label="Visualização">
+              <button id="viewTable" type="button" class="active">Diário</button>
+              <button id="viewMonthly" type="button">Mensal 24h</button>
+              <button id="viewCharts" type="button">Dinâmica</button>
+            </div>
+          </div>
+
+          <div id="tableView" class="table-wrap">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 12px 8px">
+              <button id="dailyExportCsv" class="button" type="button">Exportar diario (CSV)</button>
+              <button id="dailyExportXlsx" class="button" type="button">Exportar diario (XLSX)</button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>RESPONSAVEL</th>
+                  <th>Diretoria</th>
+                  <th>Micro</th>
+                  <th>Nº Solicitação</th>
+                  <th>Nº Ligação</th>
+                  <th>Localidade</th>
+                  <th>Serviço</th>
+                  <th>Grupo de servico</th>
+                  <th>Ocorrência</th>
+                  <th>Visitado em</th>
+                  <th>Prazo 24h</th>
+                  <th>Última base</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+
+          <div id="slaView" class="table-wrap hidden">
+            <table>
+              <thead>
+                <tr>
+                  <th>Prazo 24h</th>
+                  <th>Nº Solicitação</th>
+                  <th>Nº Ligação</th>
+                  <th>Localidade</th>
+                  <th>Ocorrência</th>
+                  <th>Data referência</th>
+                </tr>
+              </thead>
+              <tbody id="slaBody"></tbody>
+            </table>
+          </div>
+
+          <div id="monthlyView" class="monthly hidden">
+            <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+              <button id="monthExport" class="button" type="button">Exportar mensal (CSV)</button>
+              <button id="monthExportXlsx" class="button" type="button">Exportar mensal (XLSX)</button>
+            </div>
+            <div class="monthly-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+              <article><span>Total de EXOCs no histórico mensal</span><strong id="monthEligible">0</strong></article>
+              <article><span>Tratadas em 24h</span><strong id="monthTreated">0</strong></article>
+              <article><span>Fora das 24h</span><strong id="monthPending">0</strong></article>
+              <article><span>Aguardando 1ª verificação</span><strong id="monthWaiting">0</strong></article>
+              <article><span>Resultado 24h</span><strong id="monthRate">0%</strong></article>
+            </div>
+            <p class="notice" style="margin:10px 0">Mostra tudo que entrou como EXOC no histórico mensal importado, sem repetir EXOC. Conta como tratada em 24h a que saiu da base seguinte à primeira aparição. Respeita os filtros Diretoria e Micro.</p>
+            <div class="table-wrap compact">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Dia de entrada</th>
+                    <th>EXOCs</th>
+                    <th>Tratadas em 24h</th>
+                    <th>Fora das 24h</th>
+                    <th>Aguardando</th>
+                    <th>% 24h</th>
+                  </tr>
+                </thead>
+                <tbody id="monthlyBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="chartView" class="charts hidden">
+            <div class="pivot-controls">
+              <div class="field">
+                <label for="pivotRow1">Linha 1</label>
+                <select id="pivotRow1">
+                  <option value="diretoria">Diretoria</option>
+                  <option value="micro">Micro</option>
+                  <option value="localidade">Localidade</option>
+                  <option value="descricaoEncerramento">Ocorrência</option>
+                  <option value="servico">Servico</option>
+                  <option value="grupoServico">Grupo de servico</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="pivotRow2">Linha 2</label>
+                <select id="pivotRow2">
+                  <option value="micro">Micro</option>
+                  <option value="localidade">Localidade</option>
+                  <option value="descricaoEncerramento">Ocorrência</option>
+                  <option value="servico">Servico</option>
+                  <option value="grupoServico">Grupo de servico</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="pivotColumn">Coluna</label>
+                <select id="pivotColumn">
+                  <option value="dia">Dia visitado</option>
+                  <option value="descricaoEncerramento">Ocorrência</option>
+                  <option value="servico">Servico</option>
+                  <option value="grupoServico">Grupo de servico</option>
+                  <option value="status">Status</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-wrap pivot-wrap">
+              <table id="pivotTable"></table>
+            </div>
+            <div>
+              <h3>Ocorrências com maior volume</h3>
+              <div id="occurrenceBars" class="bars"></div>
+            </div>
+            <div>
+              <h3>Localidades com maior volume</h3>
+              <div id="cityBars" class="bars"></div>
+            </div>
+          </div>
+        </section>
+      </section>
+      </section>
+      <div class="institutional-left" aria-hidden="true">
+        <span>INTEGRAÇÃO</span>
+        <span>OPERAÇÃO</span>
+        <span>RESULTADOS</span>
+        <span>PARA AS PESSOAS</span>
+      </div>
+      <div class="institutional-right" aria-hidden="true">
+        <span class="wave-icon"></span>
+        <span>MAIS</span>
+        <span>SANEAMENTO</span>
+        <span>MAIS VIDA</span>
+      </div>
+    </main>
+
+    <script src="config.js"></script>
+    <script src="auxiliares.js"></script>
+    <script src="grupos-servico.js"></script>
+    <script src="historico-setembro.js"></script>
+    <script src="painel.js"></script>
+  </body>
+</html>
