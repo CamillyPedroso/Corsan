@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EXOCS | Painel de Metricas</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#overview" aria-label="EXOCS Inicio">
+          <span class="brand-mark">X</span>
+          <span>
+            <strong>EXOCS</strong>
+            <small>painel executivo</small>
+          </span>
+        </a>
+
+        <nav class="nav-tabs" aria-label="Navegacao principal">
+          <button class="nav-tab active" data-tab="overview" type="button">Visao geral</button>
+          <button class="nav-tab" data-tab="metrics" type="button">Metricas</button>
+          <button class="nav-tab" data-tab="history" type="button">Historico</button>
+          <button class="nav-tab" data-tab="design" type="button">Designer</button>
+          <button class="nav-tab" data-tab="database" type="button">Google Sheets</button>
+        </nav>
+
+        <div class="repo-card">
+          <span>Repositorio sugerido</span>
+          <strong id="repoName">exocs-painel</strong>
+          <small>Pronto para GitHub Pages</small>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">controle central</p>
+            <h1>Painel de crescimento EXOCS</h1>
+          </div>
+          <div class="topbar-actions">
+            <span class="sync-status" id="syncStatus">Carregando dados...</span>
+            <button class="primary-button" id="refreshButton" type="button">Atualizar</button>
+          </div>
+        </header>
+
+        <section class="tab-panel active" id="overview">
+          <div class="hero-panel">
+            <div>
+              <p class="eyebrow">resumo dinamico</p>
+              <h2>Metricas, historico e visual da marca em um unico lugar.</h2>
+              <p>
+                Use este painel como landing page interna, relatorio publico ou vitrine para
+                acompanhar a evolucao dos dados conectados ao Google Sheets.
+              </p>
+            </div>
+            <div class="hero-kpi">
+              <span>Saude geral</span>
+              <strong id="healthScore">--%</strong>
+              <small id="healthLabel">Aguardando leitura</small>
+            </div>
+          </div>
+
+          <div class="metric-grid" id="metricCards"></div>
+
+          <div class="content-grid">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">evolucao</p>
+                  <h3>Performance por periodo</h3>
+                </div>
+                <select id="chartMetric" aria-label="Selecionar metrica do grafico"></select>
+              </div>
+              <canvas id="trendChart" width="900" height="320" aria-label="Grafico de tendencia"></canvas>
+            </section>
+
+            <section class="panel accent-panel">
+              <p class="eyebrow">proximo foco</p>
+              <h3 id="focusTitle">Organizar prioridades</h3>
+              <p id="focusText">
+                Quando a planilha carregar, este bloco mostra onde vale colocar energia primeiro.
+              </p>
+              <div class="mini-list" id="focusList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="metrics">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">indicadores</p>
+              <h2>Metricas ativas</h2>
+            </div>
+            <input id="metricSearch" type="search" placeholder="Buscar metrica..." />
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Metrica</th>
+                  <th>Valor</th>
+                  <th>Meta</th>
+                  <th>Progresso</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="metricsTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="history">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">linha do tempo</p>
+              <h2>Historico de registros</h2>
+            </div>
+            <select id="statusFilter" aria-label="Filtrar por status">
+              <option value="all">Todos</option>
+              <option value="ok">Ok</option>
+              <option value="attention">Atencao</option>
+              <option value="critical">Critico</option>
+            </select>
+          </div>
+          <div class="timeline" id="timeline"></div>
+        </section>
+
+        <section class="tab-panel" id="design">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">identidade</p>
+              <h2>Sistema visual</h2>
+            </div>
+          </div>
+          <div class="design-grid">
+            <article class="panel">
+              <h3>Cores</h3>
+              <div class="swatches">
+                <span style="--swatch:#111827">Carbono</span>
+                <span style="--swatch:#14b8a6">Teal</span>
+                <span style="--swatch:#f59e0b">Energia</span>
+                <span style="--swatch:#f8fafc">Neve</span>
+              </div>
+            </article>
+            <article class="panel">
+              <h3>Tom da comunicacao</h3>
+              <p>
+                Direto, confiante e visual. O painel valoriza leitura rapida, prioridades claras
+                e dados sempre conectados a uma acao.
+              </p>
+            </article>
+            <article class="panel">
+              <h3>Componentes</h3>
+              <div class="component-row">
+                <button class="primary-button" type="button">Acao principal</button>
+                <span class="status-pill ok">Ok</span>
+                <span class="status-pill attention">Atencao</span>
+                <span class="status-pill critical">Critico</span>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="database">
+          <div class="content-grid">
+            <section class="panel">
+              <p class="eyebrow">mini banco</p>
+              <h2>Conexao com Google Sheets</h2>
+              <p>
+                Publique sua planilha como CSV e cole o link em <strong>assets/app.js</strong>,
+                na variavel <strong>SHEET_CSV_URL</strong>. Para gravar dados, use um Apps Script
+                e cole o endpoint em <strong>APPS_SCRIPT_URL</strong>.
+              </p>
+              <div class="setup-box">
+                <strong>Colunas esperadas:</strong>
+                <span>date, metric, value, target, category, status, note</span>
+              </div>
+            </section>
+
+            <section class="panel">
+              <p class="eyebrow">novo registro</p>
+              <h2>Adicionar dado</h2>
+              <form id="entryForm" class="entry-form">
+                <label>
+                  Data
+                  <input name="date" type="date" required />
+                </label>
+                <label>
+                  Metrica
+                  <input name="metric" type="text" placeholder="Ex: Leads" required />
+                </label>
+                <label>
+                  Valor
+                  <input name="value" type="number" step="0.01" required />
+                </label>
+                <label>
+                  Meta
+                  <input name="target" type="number" step="0.01" required />
+                </label>
+                <label>
+                  Categoria
+                  <input name="category" type="text" placeholder="Ex: Marketing" required />
+                </label>
+                <label>
+                  Status
+                  <select name="status" required>
+                    <option value="ok">Ok</option>
+                    <option value="attention">Atencao</option>
+                    <option value="critical">Critico</option>
+                  </select>
+                </label>
+                <label class="wide">
+                  Observacao
+                  <textarea name="note" rows="3" placeholder="Resumo do registro"></textarea>
+                </label>
+                <button class="primary-button wide" type="submit">Salvar registro</button>
+              </form>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/app.js"></script>
+  </body>
+</html>

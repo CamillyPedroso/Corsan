@@ -1,0 +1,17 @@
+date,metric,value,target,category,status,note
+2026-09-01,Leads,280,400,Marketing,attention,Campanha inicial em validacao
+2026-09-08,Leads,340,400,Marketing,attention,O trafego pago aumentou a captacao
+2026-09-15,Leads,420,400,Marketing,ok,Meta batida com criativos novos
+2026-09-22,Leads,468,500,Marketing,ok,Semana consistente de entrada
+2026-09-01,Conversao,12,18,Vendas,attention,Formulario precisa de ajustes
+2026-09-08,Conversao,15,18,Vendas,attention,Teste de copy em andamento
+2026-09-15,Conversao,19,18,Vendas,ok,Oferta validada
+2026-09-22,Conversao,17,20,Vendas,attention,Meta ampliada para o proximo ciclo
+2026-09-01,Receita,12400,20000,Financeiro,attention,Inicio de ciclo comercial
+2026-09-08,Receita,16800,20000,Financeiro,attention,Pipeline ganhou tracao
+2026-09-15,Receita,23100,22000,Financeiro,ok,Fechamentos acima da meta
+2026-09-22,Receita,25200,28000,Financeiro,attention,Negociacoes ainda abertas
+2026-09-01,Satisfacao,82,90,Experiencia,attention,Respostas apontaram duvidas no onboarding
+2026-09-08,Satisfacao,88,90,Experiencia,attention,Novo atendimento reduziu friccao
+2026-09-15,Satisfacao,91,90,Experiencia,ok,Indicador superou a meta
+2026-09-22,Satisfacao,93,94,Experiencia,ok,Qualidade se manteve alta
