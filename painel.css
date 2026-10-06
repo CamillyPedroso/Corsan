@@ -819,7 +819,7 @@ body::after,
     0 28px 72px rgba(0, 43, 128, 0.2),
     inset 0 1px 0 rgba(255,255,255,.95),
     0 0 0 1px rgba(255,255,255,.66);
-  backdrop-filter: blur(10px);
+  /* backdrop-filter removido (pesado para notebooks) */
 }
 
 .top-actions {
@@ -1069,7 +1069,7 @@ h1 {
   border-radius: 22px;
   background: rgba(240, 249, 255, 0.82);
   box-shadow: 0 20px 60px rgba(0, 39, 189, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
+  /* backdrop-filter removido (pesado para notebooks) */
 }
 
 .top-actions {
@@ -1394,7 +1394,7 @@ body {
   background-repeat: no-repeat !important;
   background-position: center top !important;
   background-size: 100% 100vh !important;
-  background-attachment: fixed !important;
+  background-attachment: scroll !important;
   overflow-x: hidden;
 }
 
@@ -1421,7 +1421,7 @@ body::after,
   border-radius: 24px !important;
   background: rgba(226, 243, 255, 0.84) !important;
   box-shadow: 0 28px 70px rgba(0, 75, 145, 0.20), inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
-  backdrop-filter: blur(10px) saturate(1.12);
+  /* backdrop-filter removido (pesado para notebooks) */
 }
 
 .top-actions {

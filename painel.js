@@ -1,4 +1,5 @@
 window.addEventListener("error", function(event) {
+  if (!event.message || event.message === "Script error.") return;
   var box = document.querySelector("#loadNotice");
   if (box) {
     box.textContent = "Erro no painel: " + (event.message || "erro desconhecido");
@@ -140,7 +141,7 @@ function sheetsConfig() {
     const saved = JSON.parse(localStorage.getItem(SHEETS_CONFIG_KEY) || "{}");
     return {
       url: String(saved.url || DEFAULT_SHEETS_URL).trim(),
-      token: "",
+      token: String(saved.token || "").trim(),
     };
   } catch {
     return { url: DEFAULT_SHEETS_URL, token: "" };
@@ -151,8 +152,15 @@ function configureSheetsSync() {
   const current = sheetsConfig();
   const url = prompt("Cole a URL /exec do app da Web do Google Apps Script:", current.url);
   if (url === null) return;
-  localStorage.setItem(SHEETS_CONFIG_KEY, JSON.stringify({ url: url.trim() }));
-  setNotice(url.trim() ? "Google Sheets configurado como banco compartilhado." : "Banco compartilhado desativado.", url.trim() ? "ok" : "");
+  const token = prompt("Digite a CHAVE DE ACESSO do banco (fica salva só neste navegador):", "");
+  if (token === null) return;
+  if (url.trim() && !/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url.trim())) {
+    setNotice("Link inválido. Use o link do App da Web que começa com https://script.google.com/macros/s/ e termina em /exec.", "error");
+    return;
+  }
+  localStorage.setItem(SHEETS_CONFIG_KEY, JSON.stringify({ url: url.trim(), token: token.trim() }));
+  setNotice("Banco Google configurado. Recarregando dados...", "ok");
+  loadSheetsHistory().then((ok) => { if (ok) render(); });
 }
 
 function applyDatabasePayload(payload) {
@@ -171,58 +179,56 @@ function applyDatabasePayload(payload) {
   return !!remote.length || !!latest;
 }
 
-function syncSnapshotToSheets(snapshot) {
-  if (window.google && window.google.script && window.google.script.run) {
-    google.script.run
-      .withFailureHandler(() => setNotice("Nao consegui salvar no banco Google. Tente recarregar a pagina.", "error"))
-      .saveSnapshot(snapshot);
-    return;
-  }
+async function callSheets(body) {
   const config = sheetsConfig();
-  if (!config.url) return;
-  fetch(config.url, {
-    method: "POST",
-    mode: "no-cors",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ snapshot }),
-  }, function() {});
+  if (!config.url) return { ok: false, skipped: true };
+  if (!config.token) return { ok: false, error: "Chave de acesso não configurada. Clique em \"Banco Google\"." };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60000);
+  try {
+    const response = await fetch(config.url, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(Object.assign({ token: config.token }, body)),
+      signal: controller.signal,
+      credentials: "omit",
+    });
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { ok: false, error: "O Apps Script não respondeu em JSON. Confira se a implantação nova está ativa e com acesso para \"Qualquer pessoa\"." };
+    }
+  } catch (error) {
+    return { ok: false, error: error && error.name === "AbortError" ? "O banco Google demorou demais para responder." : "Não consegui falar com o banco Google (rede bloqueada ou link errado)." };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-function loadSheetsHistory() {
-  if (window.google && window.google.script && window.google.script.run) {
-    return new Promise((resolve) => {
-      google.script.run
-        .withSuccessHandler((payload) => resolve(applyDatabasePayload(payload)))
-        .withFailureHandler(() => resolve(false))
-        .getDatabase();
-    });
-  }
-  const config = sheetsConfig();
-  if (!config.url) return Promise.resolve(false);
-  return new Promise((resolve) => {
-    const callback = `__exocDb_${Date.now()}`;
-    const script = document.createElement("script");
-    const separator = config.url.includes("?") ? "&" : "?";
-    window[callback] = (payload) => {
-      try {
-        resolve(applyDatabasePayload(payload));
-      } finally {
-        delete window[callback];
-        script.remove();
-      }
-    };
-    script.onerror = () => {
-      delete window[callback];
-      script.remove();
-      resolve(false);
-    };
-    script.src = `${config.url}${separator}action=history&callback=${encodeURIComponent(callback)}&_=${Date.now()}`;
-    document.head.appendChild(script);
-    setTimeout(() => {
-      if (window[callback]) window[callback]({ history: [] });
-    }, 30000);
+let sheetsQueue = Promise.resolve();
+function syncSnapshotToSheets(snapshot) {
+  sheetsQueue = sheetsQueue.then(async () => {
+    const result = await callSheets({ action: "save", snapshot });
+    if (result.skipped) return;
+    if (!result.ok) setNotice("Não salvou no banco Google: " + (result.error || "erro desconhecido"), "error");
   });
+  return sheetsQueue;
 }
+
+async function loadSheetsHistory() {
+  const result = await callSheets({ action: "history" });
+  if (result.skipped) return false;
+  if (!result.ok) {
+    setNotice("Banco Google: " + (result.error || "erro desconhecido"), "error");
+    return false;
+  }
+  return applyDatabasePayload(result);
+}
+function esc(value) {
+  return String(value != null ? value : "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
 function normalize(value) {
   return String(value != null ? value : "").trim();
 }
@@ -412,9 +418,6 @@ function applyBusinessRules(rows) {
 
 
 const XLSX_SOURCES = [
-  "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js",
-  "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
-  "https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js",
   "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js",
 ];
 let xlsxPromise = null;
@@ -887,23 +890,23 @@ function renderSummary(records) {
 }
 
 function renderTable(records) {
-  const visible = records.slice(0, 700);
+  const visible = records.slice(0, 200);
   els.body.innerHTML = "";
   const fragment = document.createDocumentFragment();
   visible.forEach((record) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${record.procxCoi || "Não localizado"}</td>
-      <td>${record.diretoria || "Não localizado"}</td>
-      <td>${record.micro || "Não localizado"}</td>
-      <td>${record.solicitacao}</td>
-      <td>${record.ligacao}</td>
-      <td>${record.localidade}</td>
-      <td>${record.servico}</td>
-      <td>${record.grupoServico || "Sem grupo"}</td>
-      <td>${record.descricaoEncerramento}</td>
-      <td>${record.visitadoEm}</td>
-      <td><span class="pill ${record.deadline.className}">${record.deadline.label}</span></td>
+      <td>${esc(record.procxCoi || "Não localizado")}</td>
+      <td>${esc(record.diretoria || "Não localizado")}</td>
+      <td>${esc(record.micro || "Não localizado")}</td>
+      <td>${esc(record.solicitacao)}</td>
+      <td>${esc(record.ligacao)}</td>
+      <td>${esc(record.localidade)}</td>
+      <td>${esc(record.servico)}</td>
+      <td>${esc(record.grupoServico || "Sem grupo")}</td>
+      <td>${esc(record.descricaoEncerramento)}</td>
+      <td>${esc(record.visitadoEm)}</td>
+      <td><span class="pill ${esc(record.deadline.className)}">${esc(record.deadline.label)}</span></td>
       <td><span class="pill ${record.appearsLatest ? "open" : "ok"}">${
       record.appearsLatest ? "Permanece" : "Saiu"
     }</span></td>
@@ -936,7 +939,7 @@ function renderBars(container, items) {
     const row = document.createElement("div");
     row.className = "bar-row";
     row.innerHTML = `
-      <span class="bar-label" title="${label}">${label}</span>
+      <span class="bar-label" title="${esc(label)}">${esc(label)}</span>
       <span class="bar-value">${number(value)}</span>
       <span class="bar-track"><span class="bar-fill" style="width:${(value / max) * 100}%"></span></span>
     `;
@@ -945,6 +948,7 @@ function renderBars(container, items) {
 }
 
 function renderCharts(records) {
+  if (els.chartView.classList.contains("hidden")) return;
   renderBars(els.occurrenceBars, topCounts(records, "descricaoEncerramento"));
   renderBars(els.cityBars, topCounts(records, "localidade"));
   renderPivot(records);
@@ -1086,7 +1090,7 @@ function renderMonthly() {
   const line = (label, d, bold) => {
     const pct = d.total ? Math.round((d.treated / d.total) * 100) : 0;
     const cells = [label, number(d.total), number(d.treated), number(d.late), number(d.waiting), `${pct}%`];
-    return `<tr>${cells.map((c) => `<td>${bold ? `<strong>${c}</strong>` : c}</td>`).join("")}</tr>`;
+    return `<tr>${cells.map((c) => `<td>${bold ? `<strong>${esc(c)}</strong>` : esc(c)}</td>`).join("")}</tr>`;
   };
   const total = list.reduce((a, d) => ({ total: a.total + d.total, treated: a.treated + d.treated, late: a.late + d.late, waiting: a.waiting + d.waiting }), { total: 0, treated: 0, late: 0, waiting: 0 });
   els.monthlyBody.innerHTML = list.map((d) => line(d.day.length === 10 ? `${d.day.slice(8)}/${d.day.slice(5, 7)}` : d.day, d, false)).join("") + (list.length ? line("Total do mês", total, true) : "");
@@ -1132,25 +1136,31 @@ function renderPivot(records) {
   let html = `<thead>
     <tr class="pivot-top-row">
       <th class="pivot-corner" colspan="2"></th>
-      ${columnMeta.map((column) => `<th>${column.label}</th>`).join("")}
+      ${columnMeta.map((column) => `<th>${esc(column.label)}</th>`).join("")}
       <th>Total Geral</th>
     </tr>
     <tr class="pivot-field-row">
-      <th><span>${labelFor(row1)}</span></th>
-      <th><span>${labelFor(row2)}</span></th>
+      <th><span>${esc(labelFor(row1))}</span></th>
+      <th><span>${esc(labelFor(row2))}</span></th>
       ${columns.map(() => "<th></th>").join("")}
       <th></th>
     </tr>
   </thead><tbody>`;
   let lastFirst = null;
-  Array.from(rows.values())
-    .sort((a, b) => `${a.first} ${a.second}`.localeCompare(`${b.first} ${b.second}`, "pt-BR"))
+  const allRows = Array.from(rows.values())
+    .sort((a, b) => `${a.first} ${a.second}`.localeCompare(`${b.first} ${b.second}`, "pt-BR"));
+  const PIVOT_LIMIT = 150;
+  allRows.slice(PIVOT_LIMIT).forEach((row) => {
+    columns.forEach((column) => { totals[column] += row.counts[column] || 0; });
+    grandTotal += row.total;
+  });
+  allRows.slice(0, PIVOT_LIMIT)
     .forEach((row) => {
       const groupStart = row.first !== lastFirst;
       lastFirst = row.first;
       html += `<tr class="${groupStart ? "group-start" : ""}">
-        <td>${row.first}</td>
-        <td>${row.second}</td>`;
+        <td>${esc(row.first)}</td>
+        <td>${esc(row.second)}</td>`;
       columns.forEach((column) => {
         const value = row.counts[column] || "";
         totals[column] += row.counts[column] || 0;
@@ -1162,6 +1172,9 @@ function renderPivot(records) {
   html += `<tr class="total-row"><td>Total Geral</td><td></td>${columns
     .map((column) => `<td>${totals[column] || ""}</td>`)
     .join("")}<td>${grandTotal}</td></tr></tbody>`;
+  if (allRows.length > PIVOT_LIMIT) {
+    html = html.replace('<tr class="total-row">', `<tr><td colspan="${columns.length + 3}">Mostrando ${PIVOT_LIMIT} de ${number(allRows.length)} linhas. Use os filtros para refinar (o Total Geral considera tudo).</td></tr><tr class="total-row">`);
+  }
   els.pivotTable.innerHTML = html;
 }
 
@@ -1190,12 +1203,12 @@ function renderSla(records) {
   priority.forEach((record) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><span class="pill ${record.deadline.className}">${record.deadline.label}</span></td>
-      <td>${record.solicitacao}</td>
-      <td>${record.ligacao}</td>
-      <td>${record.localidade}</td>
-      <td>${record.descricaoEncerramento}</td>
-      <td>${record.referenceDate}</td>
+      <td><span class="pill ${esc(record.deadline.className)}">${esc(record.deadline.label)}</span></td>
+      <td>${esc(record.solicitacao)}</td>
+      <td>${esc(record.ligacao)}</td>
+      <td>${esc(record.localidade)}</td>
+      <td>${esc(record.descricaoEncerramento)}</td>
+      <td>${esc(record.referenceDate)}</td>
     `;
     fragment.appendChild(tr);
   });
@@ -1428,8 +1441,20 @@ els.stateFile.addEventListener("change", async (event) => {
     state.latestKeys = payload.latestKeys ? new Set(payload.latestKeys) : null;
     state.baseline = applyBusinessRules(payload.baseline || []);
     await saveState();
-    setNotice("Acompanhamento importado.", "ok");
     render();
+    const toSend = (state.history || []).filter((snap) => snap && snap.dateKey);
+    if (sheetsConfig().url && toSend.length) {
+      for (let i = 0; i < toSend.length; i += 1) {
+        setNotice(`Acompanhamento importado. Enviando ao banco Google: dia ${i + 1} de ${toSend.length}...`, "ok");
+        const snap = Object.assign({}, toSend[i], { type: "base_inicial" });
+        delete snap._keySet;
+        await syncSnapshotToSheets(snap);
+        await new Promise((r) => setTimeout(r, 800));
+      }
+      setNotice(`Acompanhamento importado e enviado ao banco Google (${toSend.length} dia(s)).`, "ok");
+    } else {
+      setNotice("Acompanhamento importado.", "ok");
+    }
   } catch {
     setNotice("O arquivo de acompanhamento não pôde ser importado.", "error");
   } finally {
@@ -1514,7 +1539,7 @@ function on(element, eventName, handler) {
 }
 
 on(els.viewTable, "click", () => setView("table"));
-on(els.viewCharts, "click", () => setView("charts"));
+on(els.viewCharts, "click", () => { setView("charts"); render(); });
 on(els.viewMonthly, "click", () => setView("monthly"));
 on(document.getElementById("monthExport"), "click", exportMonthly);
 on(document.getElementById("monthExportXlsx"), "click", exportMonthlyXlsx);
