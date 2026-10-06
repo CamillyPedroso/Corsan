@@ -140,8 +140,8 @@ function sheetsConfig() {
   try {
     const saved = JSON.parse(localStorage.getItem(SHEETS_CONFIG_KEY) || "{}");
     return {
-      url: String(saved.url || DEFAULT_SHEETS_URL).trim(),
-      token: String(saved.token || "").trim(),
+      url: String(DEFAULT_SHEETS_URL || saved.url || "").trim(),
+      token: "",
     };
   } catch {
     return { url: DEFAULT_SHEETS_URL, token: "" };
@@ -152,13 +152,11 @@ function configureSheetsSync() {
   const current = sheetsConfig();
   const url = prompt("Cole a URL /exec do app da Web do Google Apps Script:", current.url);
   if (url === null) return;
-  const token = prompt("Digite a CHAVE DE ACESSO do banco (fica salva só neste navegador):", "");
-  if (token === null) return;
   if (url.trim() && !/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url.trim())) {
     setNotice("Link inválido. Use o link do App da Web que começa com https://script.google.com/macros/s/ e termina em /exec.", "error");
     return;
   }
-  localStorage.setItem(SHEETS_CONFIG_KEY, JSON.stringify({ url: url.trim(), token: token.trim() }));
+  localStorage.setItem(SHEETS_CONFIG_KEY, JSON.stringify({ url: url.trim() }));
   setNotice("Banco Google configurado. Recarregando dados...", "ok");
   loadSheetsHistory().then((ok) => { if (ok) render(); });
 }
@@ -182,7 +180,6 @@ function applyDatabasePayload(payload) {
 async function callSheets(body) {
   const config = sheetsConfig();
   if (!config.url) return { ok: false, skipped: true };
-  if (!config.token) return { ok: false, error: "Chave de acesso não configurada. Clique em \"Banco Google\"." };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 60000);
   try {
