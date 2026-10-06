@@ -351,7 +351,7 @@ function cleanRows(rows) {
         comunidadeExecutada: normalize(pick(row, ["Solicitações Executadas em Comunidades"])),
         executor: normalize(pick(row, ["Execultor", "Executor"])),
         tipoEncerramento: normalize(pick(row, ["Tipo Encerramento", "Tipo Encerramento "])),
-        descricaoEncerramento: normalize(pick(row, ["Descrição Tipo Encerramento", "Descricao Tipo Encerramento"])),
+        descricaoEncerramento: normalize(pick(row, ["Descrição Tipo Encerramento", "Descricao Tipo Encerramento"])) || normalize(pick(row, ["Tipo Encerramento", "Tipo Encerramento "])),
       };
       record.grupoServico = serviceGroupFor(record.codigoServico);
       record.key = makeKey(record);
@@ -376,37 +376,52 @@ function cleanRows(rows) {
   return { rows: Array.from(map.values()), duplicates, discarded: rows.length - cleaned.length };
 }
 
-function applyBusinessRules(rows) {
-  const currentDay = todayKey();
+function dayFromFileName(fileName) {
+  const name = String(fileName || "");
+  let m = name.match(/(20\d{2})[-_.](\d{2})[-_.](\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = name.match(/(\d{2})[-_.](\d{2})[-_.](20\d{2})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return "";
+}
+
+function serviceCode(value) {
+  return normKey(value).replace(/\.0+$/, "");
+}
+
+// Regras do tratamento EXOC:
+// 1) responsabilidade COI pela tabela auxiliar (código do serviço)
+// 2) somente encerradas com ocorrência (coluna Situação)
+// 3) fora tudo que foi visitado no dia atual da base (eles nunca tratam as do dia)
+function applyBusinessRules(rows, referenceDay) {
+  const currentDay = referenceDay || todayKey();
+  const hasSituacao = rows.some((record) => normalize(record.situacao));
   const enrichedRows = rows
     .map((record) => {
       const microInfo = state.microMap[normKey(record.localidade)] || state.microMap[normKey(record.micro)] || {};
-      const serviceInfo = state.serviceMap[normKey(record.codigoServico)] || state.serviceMap[normKey(record.servico)] || {};
+      const code = serviceCode(record.codigoServico);
+      const serviceInfo = (code ? state.serviceMap[code] : state.serviceMap[normKey(record.servico)]) || {};
       const svcResp = normalize(serviceInfo.responsabilidade);
-      const finalResp = svcResp || normalize(record.procxCoi);
-      const enriched = Object.assign({}, record, {
+      return Object.assign({}, record, {
         diretoria: microInfo.diretoria || record.diretoria || "",
         micro: microInfo.micro || record.localidade || "",
-        responsavel: finalResp,
-        responsabilidade: finalResp,
-        procxCoi: finalResp,
+        responsavel: svcResp,
+        responsabilidade: svcResp,
+        procxCoi: svcResp,
         _semTabela: !svcResp,
         afetaCliente: serviceInfo.afetaCliente || "",
-        grupoServico: serviceGroupFor(record.codigoServico || record.servico),
+        grupoServico: serviceGroupFor(code || record.servico),
       });
-      return enriched;
-    })
-    ;
-  const f = { semData: 0, outroAno: 0, hoje: 0, semCoi: 0, semTabela: 0 };
+    });
+  const f = { semData: 0, outroAno: 0, hoje: 0, semCoi: 0, semTabela: 0, naoEncerrada: 0, semSituacao: !hasSituacao, diaBase: currentDay };
   const out = enrichedRows.filter((record) => {
+    if (hasSituacao && !normKey(record.situacao).includes("OCORRENCIA")) { f.naoEncerrada += 1; return false; }
     const date = record.visitadoEmMs ? new Date(record.visitadoEmMs) : null;
     if (!date) { f.semData += 1; return false; }
     if (date.getFullYear() !== 2026) { f.outroAno += 1; return false; }
-    if (dateKeyFromMs(record.visitadoEmMs) === currentDay) { f.hoje += 1; return false; }
-    if (record._semTabela) f.semTabela += 1;
-    const resp = normKey(record.procxCoi);
-    const isCoi = record._semTabela ? resp.includes("COI") : resp === "COI";
-    if (!isCoi) { f.semCoi += 1; return false; }
+    if (dateKeyFromMs(record.visitadoEmMs) >= currentDay) { f.hoje += 1; return false; }
+    if (record._semTabela) { f.semTabela += 1; return false; }
+    if (normKey(record.procxCoi) !== "COI") { f.semCoi += 1; return false; }
     return true;
   });
   out.funnel = f;
@@ -533,7 +548,7 @@ async function sheetRows(buffer, name) {
 async function parseWorkbookFromArrayBuffer(buffer, fileName = "") {
   const raw = await sheetRows(buffer, fileName);
   const cleaned = cleanRows(raw);
-  const rows = applyBusinessRules(cleaned.rows);
+  const rows = applyBusinessRules(cleaned.rows, dayFromFileName(fileName) || todayKey());
   return {
     rows,
     duplicates: cleaned.duplicates,
@@ -587,7 +602,7 @@ function buildServiceMap(rows) {
       responsavel: normalize(row[respCol]),
       afetaCliente: normalize(row[afetaCol]),
     };
-    if (code) map[normKey(code)] = item;
+    if (code) map[serviceCode(code)] = item;
     if (service) {
       const k = normKey(service);
       if (k in seen && seen[k] !== item.responsabilidade) ambiguous.add(k);
@@ -876,12 +891,14 @@ function renderSummary(records) {
       box.innerHTML = `<strong>Reconciliação da volumetria</strong> (última base inicial enviada): ${number(f.brutas)} linhas na planilha`
         + ` − ${number(f.semChave)} sem nº solicitação/ligação/serviço`
         + ` − ${number(f.duplicadas)} duplicadas (mesma solicitação + ligação + código do serviço)`
+        + ` − ${number(f.naoEncerrada || 0)} não encerradas com ocorrência`
         + ` − ${number(f.semData)} sem data válida em "Visitado em"`
         + ` − ${number(f.outroAno)} visitadas fora de 2026`
-        + ` − ${number(f.hoje)} visitadas hoje`
-        + ` − ${number(f.semCoi)} responsável diferente de COI (tabela auxiliar)`
-        + ` = <strong>${number(f.final)}</strong> no painel`
-        + (f.semTabela ? ` (${number(f.semTabela)} com código fora da tabela de responsáveis, avaliadas pela coluna da base)` : "") + ".";
+        + ` − ${number(f.hoje)} visitadas no dia da base${f.diaBase ? ` (${f.diaBase.slice(8)}/${f.diaBase.slice(5, 7)})` : ""}`
+        + ` − ${number(f.semTabela || 0)} com código fora da tabela auxiliar`
+        + ` − ${number(f.semCoi)} de outra responsabilidade (não COI)`
+        + ` = <strong>${number(f.final)}</strong> para tratar`
+        + (f.semSituacao ? `. Atenção: a base não tem a coluna "Situação", então o filtro de encerradas com ocorrência não foi aplicado` : "") + ".";
     }
   }
 }
